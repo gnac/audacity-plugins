@@ -1,12 +1,12 @@
-$nyquist plug-in
-$version 4
-$type process
-$name (_"Dual Threshold Noise Gate")
-$debugbutton false
-$preview enabled
-$author (_"David Harty")
-$release 0.0.1
-$copyright (_"Released under terms of the GNU General Public License version 2 or later")
+;nyquist plug-in
+;version 4
+;type process
+;name (_"Dual Threshold Noise Gate")
+;debugbutton false
+;preview enabled
+;author (_"David Harty")
+;release 0.0.1
+;copyright (_"Released under terms of the GNU General Public License version 2 or later")
 
 ;; Dual Threshold Noise Gate
 ;;
