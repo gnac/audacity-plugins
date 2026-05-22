@@ -30,6 +30,7 @@ $copyright (_"Released under terms of the GNU General Public License version 2 o
 ;; drops below it (no hold needed -- it is already quiet enough).
 
 
+;control MODE "Select Function" choice "Gate,Analyze Noise Level" 0
 ;control STEREO-LINK "Stereo Linking" choice "Link Stereo Tracks,Don't Link Stereo" 0
 ;control UPPER-THRESH "Upper gate threshold (dB)" real "" -25 -96 -6
 ;control LOWER-THRESH "Lower gate threshold (dB)" real "" -60 -96 -6
@@ -66,6 +67,17 @@ $copyright (_"Released under terms of the GNU General Public License version 2 o
   (round (+ num 0.5)))
 
 
+(defun roundn (num places)
+  ;; Return NUM rounded to PLACES decimal places as a formatted string.
+  ;; Copied from the standard Noise Gate (Steve Daulton).
+  (if (= places 0)
+      (round num)
+      (let* ((x  (format nil "~a" places))
+             (ff (strcat "%#1." x "f")))
+        (setq *float-format* ff)
+        (format nil "~a" num))))
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Error checking
 
@@ -82,6 +94,41 @@ $copyright (_"Released under terms of the GNU General Public License version 2 o
         "Error.~%Lower threshold (~a dB) must be below upper threshold (~a dB).~%~
          Adjust the thresholds so that Lower < Upper."
         LOWER-THRESH UPPER-THRESH))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Analysis mode
+;;
+;; To use: select a region of noise-only audio (room tone between
+;; words), choose "Analyze Noise Level", and click OK.  The peak
+;; of that region is measured and a Lower Threshold is suggested.
+;;
+;; Upper Threshold cannot be determined from noise-only audio.
+;; To find it: select a typical voice section, run
+;; Analyze > Measure RMS, then set Upper Threshold a few dB
+;; below that measured level.
+
+(defun peak-db (sig test-len)
+  ;; Return absolute peak level in dB.
+  ;; For stereo, return the louder of the two channels.
+  (if (arrayp sig)
+      (let ((peakL (peak (aref sig 0) test-len))
+            (peakR (peak (aref sig 1) test-len)))
+        (linear-to-db (max peakL peakR)))
+      (linear-to-db (peak sig test-len))))
+
+
+(defun analyze (sig)
+  ;; Measure peak noise level from the first half-second of the
+  ;; selection and suggest a Lower Threshold setting.
+  (let* ((test-length (truncate (min len (/ *sound-srate* 2.0))))
+         (peakdb      (peak-db sig test-length))
+         (suggested   (+ 1.0 peakdb)))
+    (format nil
+      "Noise peak (first ~a s):  ~a dB~%~%Suggested Lower Threshold:  ~a dB~%~%Upper Threshold: select a voice section and~%run Analyze > Measure RMS, then set Upper~%Threshold a few dB below that level."
+      (roundn (/ test-length *sound-srate*) 2)
+      (roundn peakdb 2)
+      (roundn suggested 0))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -196,4 +243,6 @@ $copyright (_"Released under terms of the GNU General Public License version 2 o
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Entry point
 
-(catch 'err (process))
+(case MODE
+  (0 (catch 'err (process)))
+  (t (analyze *track*)))
