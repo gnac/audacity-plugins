@@ -1,12 +1,12 @@
-;nyquist plug-in
-;version 4
-;type process
-;name (_"Dual Threshold Noise Gate")
-;debugbutton false
-;preview enabled
-;author (_"David Harty")
-;release 0.0.1
-;copyright (_"Released under terms of the GNU General Public License version 2 or later")
+$nyquist plug-in
+$version 4
+$type process
+$name (_"Dual Threshold Noise Gate")
+$debugbutton true
+$preview enabled
+$author (_"David Harty")
+$release 0.0.1
+$copyright (_"Released under terms of the GNU General Public License version 2 or later")
 
 ;; Dual Threshold Noise Gate
 ;;
@@ -30,14 +30,14 @@
 ;; drops below it (no hold needed -- it is already quiet enough).
 
 
-;control MODE "Select Function" choice "Gate,Analyze Noise Level" 0
-;control STEREO-LINK "Stereo Linking" choice "Link Stereo Tracks,Don't Link Stereo" 0
-;control UPPER-THRESH "Upper gate threshold (dB)" real "" -25 -96 -6
-;control LOWER-THRESH "Lower gate threshold (dB)" real "" -60 -96 -6
-;control LEVEL-REDUCTION "Level reduction (dB)" real "" -24 -100 0
-;control ATTACK "Attack (ms)" real "" 10 1 1000
-;control HOLD "Hold (ms)" real "" 50 0 2000
-;control DECAY "Decay (ms)" real "" 100 10 4000
+$control MODE "Select Function" choice "Gate,Analyze Noise Level" 0
+$control STEREO-LINK "Stereo Linking" choice "Link Stereo Tracks,Don't Link Stereo" 0
+$control UPPER-THRESH "Upper gate threshold (dB)" real "" -25 -96 -6
+$control LOWER-THRESH "Lower gate threshold (dB)" real "" -60 -96 -6
+$control LEVEL-REDUCTION "Level reduction (dB)" real "" -24 -100 0
+$control ATTACK "Attack (ms)" real "" 10 1 1000
+$control HOLD "Hold (ms)" real "" 50 0 2000
+$control DECAY "Decay (ms)" real "" 100 10 4000
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -96,6 +96,7 @@
         LOWER-THRESH UPPER-THRESH))))
 
 
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Analysis mode
 ;;
@@ -108,6 +109,38 @@
 ;; Analyze > Measure RMS, then set Upper Threshold a few dB
 ;; below that measured level.
 
+(defun s-rms (sig &optional (rate 100.0) window-size)
+  ;;; Like RMS function but also supports stereo sounds
+  ;;; Stereo RMS is the root mean of all (samples ^ 2) [both channels]
+  (when (soundp sig)
+    (if window-size
+        (return-from s-rms (rms sig rate window-size))
+        (return-from s-rms (rms sig rate))))
+  (let (left-ms right-ms rslt step-size)
+    (setf step-size (round (/ (snd-srate (aref sig 0)) rate)))
+    (unless window-size
+      (setf window-size step-size))
+    (setf (aref sig 0) (mult (aref sig 0)(aref sig 0)))
+    (setf (aref sig 1) (mult (aref sig 1)(aref sig 1)))
+    (setf left-ms (snd-avg (aref sig 0) window-size step-size OP-AVERAGE))
+    (setf right-ms (snd-avg (aref sig 1) window-size step-size OP-AVERAGE))
+    (s-sqrt (mult 0.5 (sum left-ms right-ms)))))
+
+(defun getfloor ()
+  ;; Calculate RMS where rate=10 Hz, window-size=0.4 seconds.
+  ;; Return the lowest 0.4 to 0.5 s in the selection.
+  (let ((floor 999)
+        (window-size (round (* 0.4 *sound-srate*)))
+        samples)
+    (setf *track* (s-rms *track* 10 window-size))
+    ;; Calculate new length in samples without retaining samples in RAM.
+    (setf samples (truncate (* len (/ (snd-srate *track*) *sound-srate*))))
+    (do ((val (snd-fetch *track*) (snd-fetch *track*))
+         (count samples (1- count)))
+        ((< count 4) floor) ;stop at last full window.
+      (setf floor (min floor val)))))
+
+
 (defun peak-db (sig test-len)
   ;; Return absolute peak level in dB.
   ;; For stereo, return the louder of the two channels.
@@ -119,16 +152,27 @@
 
 
 (defun analyze (sig)
-  ;; Measure peak noise level from the first half-second of the
-  ;; selection and suggest a Lower Threshold setting.
+  ;; Measure peak noise level from the first half-second of the selection.
+  ;; Measure noise floor over the entire selection.
+  ;; Suggest an upper threshold just above peak,
+  ;; and a lower threshold setting just above the noise floor + LEVEL-REDUCTION.
   (let* ((test-length (truncate (min len (/ *sound-srate* 2.0))))
          (peakdb      (peak-db sig test-length))
-         (suggested   (+ 1.0 peakdb)))
+         (suggested   (+ 1.0 peakdb))
+         (floor       (linear-to-db (getfloor))))
     (format nil
-      "Noise peak (first ~a s):  ~a dB~%~%Suggested Lower Threshold:  ~a dB~%~%Upper Threshold: select a voice section and~%run Analyze > Measure RMS, then set Upper~%Threshold a few dB below that level."
+      (_ "Noise peak (first ~a s):  ~a dB
+Noise floor:  ~a dB
+Set upper threshold above peak
+Set lower threshold more than \"level reduction\" (~a dB) above the floor.
+Suggested Upper Threshold: ~a dB
+Suggested Lower Threshold: ~a dB.")
       (roundn (/ test-length *sound-srate*) 2)
       (roundn peakdb 2)
-      (roundn suggested 0))))
+      (roundn floor 2)
+      (- LEVEL-REDUCTION)
+      (roundn suggested 0)
+      (roundn (- floor LEVEL-REDUCTION) 0))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
