@@ -152,40 +152,60 @@ $control DECAY "Decay (ms)" real "" 100 10 4000
 
 
 (defun analyze (sig)
-  ;; Measure peak noise level from the first half-second of the selection.
-  ;; Measure noise floor over the entire selection.
-  ;; Suggest an upper threshold just above peak,
-  ;; and a lower threshold setting just above the noise floor + LEVEL-REDUCTION.
-  (let* ((test-length (truncate (min len (/ *sound-srate* 2.0))))
-         (peakdb      (peak-db sig test-length))
-         (suggested   (+ 1.0 peakdb))
-         (floor-lin   (getfloor))
-         (floor       (if floor-lin (linear-to-db floor-lin) nil)))
-    (if (null floor)
-        ;; Selection was too short for the RMS windows -- getfloor returned nil.
-        (format nil
-            "Noise peak (first ~a s):  ~a dB
-            Noise floor: selection too short to measure.
-            Select at least 0.4 seconds of noise-only audio and try again.
-            Suggested Upper Threshold: ~a dB
-            Suggested Lower Threshold: -60.00 dB (ACX MAX noisefloor)"
-          (roundn (/ test-length *sound-srate*) 2)
-          (roundn peakdb 2)
-          (roundn suggested 0))
-        ;; Full report.
-        (format nil
-            "Noise peak (first ~a s):  ~a dB
-            Noise floor:  ~a dB
-            Set upper threshold above peak
-            Set lower threshold more than \"level reduction\" (~a dB) above the floor.
-            Suggested Upper Threshold: ~a dB
-            Suggested Lower Threshold: ~a dB."
-          (roundn (/ test-length *sound-srate*) 2)
-          (roundn peakdb 2)
-          (roundn floor 2)
-          (- LEVEL-REDUCTION)
-          (roundn suggested 0)
-          (roundn (- floor LEVEL-REDUCTION) 0)))))
+    ;; Measure peak noise level from the first half-second of the selection.
+    ;; Measure noise floor over the entire selection.
+    ;; Suggest an upper threshold just above peak,
+    ;; and a lower threshold setting just above the noise floor + LEVEL-REDUCTION.
+    (let* ((test-length (truncate (min len (/ *sound-srate* 2.0))))
+            (peakdb      (peak-db sig test-length))
+            (suggested   (+ 1.0 peakdb))
+            (floor-lin   (getfloor))
+            (floor       (if floor-lin (linear-to-db floor-lin) nil)))
+        (cond
+            ((null floor)
+                ;; Selection was too short for the RMS windows -- getfloor returned nil.
+                (format nil
+"Noise peak (first ~a s):  ~a dB
+Noise floor: selection too short to measure.
+Select at least 0.4 seconds of noise-only audio and try again.
+Suggested Upper Threshold: ~a dB
+Suggested Lower Threshold: -60.00 dB (ACX MAX noisefloor)"
+                (roundn (/ test-length *sound-srate*) 2)
+                (roundn peakdb 2)
+                (roundn suggested 0))
+            )
+            ((> floor -60.00)
+                ;; Selection was too short for the RMS windows -- getfloor returned nil.
+                (format nil
+"Noise peak (first ~a s):  ~a dB\
+Noise floor:  ~a dB. (above ACX MAX noisefloor)\
+Suggested Upper Threshold: ~a dB\
+Suggested Lower Threshold: ~a dB. (Level Reduction + Min ACX Noise Floor)"
+                (roundn (/ test-length *sound-srate*) 2)
+                (roundn peakdb 2)
+                (roundn floor 2)
+                (roundn suggested 0)
+                (roundn (- -90.0 LEVEL-REDUCTION) 0) )
+            )
+            (t
+                ;; Full report.
+                (format nil
+"Noise peak (first ~a s):  ~a dB
+Noise floor:  ~a dB
+Set upper threshold above peak
+Set lower threshold more than \"level reduction\" (~a dB) above the floor.
+Suggested Upper Threshold: ~a dB
+Suggested Lower Threshold: ~a dB."
+                (roundn (/ test-length *sound-srate*) 2)
+                (roundn peakdb 2)
+                (roundn floor 2)
+                (- LEVEL-REDUCTION)
+                (roundn suggested 0)
+                (roundn (- floor LEVEL-REDUCTION) 0))
+            )
+        )
+    )
+)
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
