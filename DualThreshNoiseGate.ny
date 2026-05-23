@@ -137,7 +137,7 @@ $control DECAY "Decay (ms)" real "" 100 10 4000
     (setf samples (truncate (* len (/ (snd-srate *track*) *sound-srate*))))
     (do ((val (snd-fetch *track*) (snd-fetch *track*))
          (count samples (1- count)))
-        ((< count 4) floor) ;stop at last full window.
+        ((< count 4) (if (= floor 999) nil floor)) ;stop at last full window; nil if no measurement taken.
       (setf floor (min floor val)))))
 
 
@@ -159,20 +159,33 @@ $control DECAY "Decay (ms)" real "" 100 10 4000
   (let* ((test-length (truncate (min len (/ *sound-srate* 2.0))))
          (peakdb      (peak-db sig test-length))
          (suggested   (+ 1.0 peakdb))
-         (floor       (linear-to-db (getfloor))))
-    (format nil
-      (_ "Noise peak (first ~a s):  ~a dB
-Noise floor:  ~a dB
-Set upper threshold above peak
-Set lower threshold more than \"level reduction\" (~a dB) above the floor.
-Suggested Upper Threshold: ~a dB
-Suggested Lower Threshold: ~a dB.")
-      (roundn (/ test-length *sound-srate*) 2)
-      (roundn peakdb 2)
-      (roundn floor 2)
-      (- LEVEL-REDUCTION)
-      (roundn suggested 0)
-      (roundn (- floor LEVEL-REDUCTION) 0))))
+         (floor-lin   (getfloor))
+         (floor       (if floor-lin (linear-to-db floor-lin) nil)))
+    (if (null floor)
+        ;; Selection was too short for the RMS windows -- getfloor returned nil.
+        (format nil
+            "Noise peak (first ~a s):  ~a dB
+            Noise floor: selection too short to measure.
+            Select at least 0.4 seconds of noise-only audio and try again.
+            Suggested Upper Threshold: ~a dB
+            Suggested Lower Threshold: -60.00 dB (ACX MAX noisefloor)"
+          (roundn (/ test-length *sound-srate*) 2)
+          (roundn peakdb 2)
+          (roundn suggested 0))
+        ;; Full report.
+        (format nil
+            "Noise peak (first ~a s):  ~a dB
+            Noise floor:  ~a dB
+            Set upper threshold above peak
+            Set lower threshold more than \"level reduction\" (~a dB) above the floor.
+            Suggested Upper Threshold: ~a dB
+            Suggested Lower Threshold: ~a dB."
+          (roundn (/ test-length *sound-srate*) 2)
+          (roundn peakdb 2)
+          (roundn floor 2)
+          (- LEVEL-REDUCTION)
+          (roundn suggested 0)
+          (roundn (- floor LEVEL-REDUCTION) 0)))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
